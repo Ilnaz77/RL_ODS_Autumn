@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "rl-1"
+version = "0.1.0"
+description = ""
+authors = ["Салимов Ильназ Рамисович <ilnaz.salimov@sbermarket.ru>"]
+readme = "README.md"
+packages = [{include = "rl_1"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+gym = "0.24.0"
+jupyter = "^1.0.0"
+wandb = "^0.15.11"
+plotly = "5.17.0"
+pandas = "1.5.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
