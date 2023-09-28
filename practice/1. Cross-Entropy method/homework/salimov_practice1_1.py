@@ -2,8 +2,11 @@ import time
 from typing import List
 
 import gym
+import joblib
 import numpy as np
+import pandas as pd
 from gym import Env
+from tqdm import tqdm
 
 
 class CrossEntropyAgent:
@@ -50,21 +53,23 @@ def get_trajectory(env: Env, agent: CrossEntropyAgent, max_iter: int, visualize:
 
 
 def cross_entropy_agent_model(
-        env: Env,
         state_n: int,
         action_n: int,
         quantile_param: float = 0.9,
         iterations_N: int = 20,
         trajectories_K: int = 50,
         max_iter: int = 200):
-
+    env = gym.make("Taxi-v3")
     agent = CrossEntropyAgent(action_n=action_n, state_n=state_n)
-
+    best_mean_total_reward = -np.inf
     for n in range(iterations_N):
         # policy evaluation
         trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
         total_rewards = [np.sum(trajectory["rewards"]) for trajectory in trajectories]
-        print(f"Iter: {n} | Total reward: {np.mean(total_rewards)}")  # в график в зависимости от итерации
+        # print(f"Iter: {n} | Total reward: {np.mean(total_rewards)}")  # в график в зависимости от итерации
+
+        if np.mean(total_rewards) > best_mean_total_reward:
+            best_mean_total_reward = np.mean(total_rewards)
 
         # policy improvement
         gamma_quantile = np.quantile(total_rewards, quantile_param)
@@ -75,13 +80,10 @@ def cross_entropy_agent_model(
 
         agent.fit(elite_trajectories)
 
-    trajectory = get_trajectory(env, agent, max_iter, visualize=True)
-    print('total reward:', sum(trajectory['rewards']))
-    print('model:\n', agent.model)
+    return best_mean_total_reward
 
 
 if __name__ == "__main__":
-    env = gym.make("Taxi-v3")
     # Rewards:
     # -1 per step unless other reward is triggered.
     # +20 delivering passenger.
@@ -100,19 +102,44 @@ if __name__ == "__main__":
     # 4: pickup passenger
     # 5: drop off passenger
 
-    quantile_param = 0.9
-    iterations_N = 20
-    trajectories_K = 10000
-    max_iter = 1000
+    hyperparams = {
+        "iterations_N": [20],
+        "quantile_params": [0.1, 0.3, 0.5, 0.7, 0.9],
+        "trajectories_K": [100, 1000, 5000, 10000, 15000],
+        "max_iter": [100, 200, 500, 1000, 2000],
+    }
 
-    cross_entropy_agent_model(env=env,
-                              state_n=state_n,
-                              action_n=action_n,
-                              quantile_param=quantile_param,
-                              iterations_N=iterations_N,
-                              trajectories_K=trajectories_K,
-                              max_iter=max_iter,)
+    result = {
+        "iterations_N": [],
+        "quantile_params": [],
+        "trajectories_K": [],
+        "max_iter": [],
+        "best_mean_total_reward": [],
+    }
 
-    # найти хорошее лямбда и сравнить графики с сглаживанием и без (стало лучше или нет)
-    # сглаживание лапласа дало рез-т или нет ?
-    # сглаживание политики дало рез-т или нет ?
+    for iterations_N in hyperparams["iterations_N"]:
+        for quantile_param in hyperparams["quantile_params"]:
+            for trajectories_K in hyperparams["trajectories_K"]:
+                for max_iter in hyperparams["max_iter"]:
+                    result["iterations_N"].append(iterations_N)
+                    result["quantile_params"].append(quantile_param)
+                    result["trajectories_K"].append(trajectories_K)
+                    result["max_iter"].append(max_iter)
+
+    best_mean_total_rewards = joblib.Parallel(n_jobs=10)(
+        joblib.delayed(cross_entropy_agent_model)(state_n, action_n, quantile_param, iterations_N, trajectories_K,
+                                                  max_iter) for
+        iterations_N,
+        quantile_param,
+        trajectories_K,
+        max_iter in tqdm(zip(
+            result["iterations_N"],
+            result["quantile_params"],
+            result["trajectories_K"],
+            result["max_iter"]
+        )))
+
+    result["best_mean_total_reward"] = best_mean_total_rewards
+
+    df = pd.DataFrame.from_dict(result)
+    df.to_csv("result_1.csv", index=False)
