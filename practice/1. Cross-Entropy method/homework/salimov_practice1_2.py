@@ -2,6 +2,7 @@ import time
 from typing import List
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 from gym import Env
 
@@ -15,7 +16,7 @@ class CrossEntropyAgent:
                  is_laplace_smooth: bool = False,
                  is_policy_smooth: bool = False, ):
 
-        assert is_policy_smooth != is_laplace_smooth
+        # assert is_policy_smooth != is_laplace_smooth
         assert 0 < policy_lambda <= 1
         assert laplace_lambda > 0
 
@@ -40,16 +41,11 @@ class CrossEntropyAgent:
                 new_model[state][action] += 1
 
         if self.is_laplace_smooth:
-            # new_model = np.where(new_model == 0, new_model, new_model + self.laplace_lambda)  # 1 вариант (Неправильный)
-            new_model = new_model + self.laplace_lambda  # 2 вариант
+            new_model = new_model + self.laplace_lambda
 
         for state in range(self.state_n):
             row_sum = np.sum(new_model[state])  # сумма всех действий по фикс состоянию
-            if self.is_laplace_smooth:
-                row_sum += self.laplace_lambda * self.action_n  # 2 вариант
             if row_sum > 0:
-                # if self.is_laplace_smooth:
-                #     row_sum += self.laplace_lambda * self.action_n  # 1 вариант (Неправильный)
                 new_model[state] /= row_sum
             else:
                 new_model[state] = self.model[state].copy()
@@ -97,13 +93,13 @@ def cross_entropy_agent_model(
                               policy_lambda=policy_lambda,
                               is_policy_smooth=is_policy_smooth,
                               is_laplace_smooth=is_laplace_smooth, )
-
+    list_of_total_rewards = []
     for n in range(iterations_N):
         # policy evaluation
         trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
         total_rewards = [np.sum(trajectory["rewards"]) for trajectory in trajectories]
-        print(f"Iter: {n} | Total reward: {np.mean(total_rewards)}")  # в график в зависимости от итерации
-
+        list_of_total_rewards.append(np.mean(total_rewards))
+        # print(f'n: {n}, reward: {np.mean(total_rewards)}')
         # policy improvement
         gamma_quantile = np.quantile(total_rewards, quantile_param)
         elite_trajectories = []
@@ -113,9 +109,10 @@ def cross_entropy_agent_model(
 
         agent.fit(elite_trajectories)
 
-    trajectory = get_trajectory(env, agent, max_iter, visualize=True)
-    print('total reward:', sum(trajectory['rewards']))
-    print('model:\n', agent.model)
+    # trajectory = get_trajectory(env, agent, max_iter, visualize=True)
+    # print('total reward:', sum(trajectory['rewards']))
+    # print('model:\n', agent.model)
+    return list_of_total_rewards
 
 
 if __name__ == "__main__":
@@ -138,24 +135,60 @@ if __name__ == "__main__":
     # 4: pickup passenger
     # 5: drop off passenger
 
-    laplace_lambda: int = 10
-    policy_lambda: float = 1.0
-    is_laplace_smooth: bool = False
-    is_policy_smooth: bool = False
+    # laplace_lambda: int = 10
+    # policy_lambda: float = 1.0
+    # is_laplace_smooth: bool = False
+    # is_policy_smooth: bool = False
 
-    quantile_param = 0.9
-    iterations_N = 20
-    trajectories_K = 10000
-    max_iter = 1000
+    best_quantile_param = 0.7
+    best_iterations_N = 20
+    best_trajectories_K = 15000
+    best_max_iter = 500
 
-    cross_entropy_agent_model(env=env,
-                              state_n=state_n,
-                              action_n=action_n,
-                              quantile_param=quantile_param,
-                              iterations_N=iterations_N,
-                              trajectories_K=trajectories_K,
-                              max_iter=max_iter, )
+    fig = plt.figure(figsize=(20, 10))
+    ax = plt.axes()
 
-    # найти хорошее лямбда и сравнить графики с сглаживанием и без (стало лучше или нет)
-    # сглаживание лапласа дало рез-т или нет ?
-    # сглаживание политики дало рез-т или нет ?
+    list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                      state_n=state_n,
+                                                      action_n=action_n,
+                                                      is_laplace_smooth=False,
+                                                      is_policy_smooth=False,
+                                                      quantile_param=best_quantile_param,
+                                                      iterations_N=best_iterations_N,
+                                                      trajectories_K=best_trajectories_K,
+                                                      max_iter=best_max_iter, )
+    ax.plot(np.arange(best_iterations_N), list_of_total_rewards, label=f"Standard best model")
+
+    print("Laplace step ...")
+    for laplace_lambda in [0.1, 0.5, 1, 5, 20]:
+        list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                          state_n=state_n,
+                                                          action_n=action_n,
+                                                          laplace_lambda=laplace_lambda,
+                                                          is_laplace_smooth=True,
+                                                          is_policy_smooth=False,
+                                                          quantile_param=best_quantile_param,
+                                                          iterations_N=best_iterations_N,
+                                                          trajectories_K=best_trajectories_K,
+                                                          max_iter=best_max_iter, )
+        ax.plot(np.arange(best_iterations_N), list_of_total_rewards, label=f"Laplace smooth | lambda={laplace_lambda}")
+
+    print("Policy step ...")
+    for policy_lambda in [0.1, 0.3, 0.5, 0.7]:
+        list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                          state_n=state_n,
+                                                          action_n=action_n,
+                                                          policy_lambda=policy_lambda,
+                                                          is_laplace_smooth=False,
+                                                          is_policy_smooth=True,
+                                                          quantile_param=best_quantile_param,
+                                                          iterations_N=best_iterations_N,
+                                                          trajectories_K=best_trajectories_K,
+                                                          max_iter=best_max_iter, )
+        ax.plot(np.arange(best_iterations_N), list_of_total_rewards, label=f"Policy smooth | lambda={policy_lambda}")
+
+    ax.legend()
+    plt.grid(True)
+    plt.xlabel("epoch")
+    plt.ylabel("mean total reward")
+    fig.savefig("../result_2.png")
