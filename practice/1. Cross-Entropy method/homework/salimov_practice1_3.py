@@ -2,6 +2,7 @@ import time
 from typing import List
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 from gym import Env
 
@@ -13,6 +14,14 @@ class CrossEntropyAgent:
         self.model = np.ones((self.state_n, self.action_n)) / self.action_n
         self.deterministic_model = np.zeros_like(self.model)
 
+        self.is_train = True
+
+    def train(self):
+        self.is_train = True
+
+    def eval(self):
+        self.is_train = False
+
     def sample_deterministic_model(self):
         self.deterministic_model = np.zeros_like(self.model)
         for state in range(state_n):
@@ -22,8 +31,12 @@ class CrossEntropyAgent:
     def get_action(self, state: int) -> int:
         assert np.sum(self.deterministic_model[state]) == 1
         assert max(self.deterministic_model[state]) == 1
-        assert int(np.random.choice(np.arange(self.action_n), p=self.deterministic_model[state])) == int(np.argmax(self.deterministic_model[state]))
-        action = int(np.argmax(self.deterministic_model[state]))
+        assert int(np.random.choice(np.arange(self.action_n), p=self.deterministic_model[state])) == int(
+            np.argmax(self.deterministic_model[state]))
+        if self.is_train:
+            action = int(np.argmax(self.deterministic_model[state]))
+        else:
+            action = int(np.random.choice(np.arange(self.action_n), p=self.model[state]))
         return action
 
     def fit(self, elite_trajectories: List[dict]) -> None:
@@ -69,31 +82,38 @@ def cross_entropy_agent_model(
         deterministic_model_M: int = 10,
         max_iter: int = 200):
     agent = CrossEntropyAgent(action_n=action_n, state_n=state_n)
-
+    list_of_total_rewards = []
     for n in range(iterations_N):
         mean_rewards_over_deterministic_models = []
         pool_of_trajectories_over_deterministic_models = []
         # policy evaluation
+        agent.train()
         for m in range(deterministic_model_M):
             agent.sample_deterministic_model()
             trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
-            mean_reward_over_deterministic_model = np.mean([np.sum(trajectory["rewards"]) for trajectory in trajectories])
+            mean_reward_over_deterministic_model = np.mean(
+                [np.sum(trajectory["rewards"]) for trajectory in trajectories])
             pool_of_trajectories_over_deterministic_models.append(trajectories)
             mean_rewards_over_deterministic_models.append(mean_reward_over_deterministic_model)
-        print(f"Iter: {n} | Total reward: {np.mean(mean_rewards_over_deterministic_models)}")  # в график в зависимости от итерации
 
         # policy improvement
         gamma_quantile = np.quantile(mean_rewards_over_deterministic_models, quantile_param)
         elite_trajectories = []
-        for trajectory, total_reward in zip(pool_of_trajectories_over_deterministic_models, mean_rewards_over_deterministic_models):
+        for trajectory, total_reward in zip(pool_of_trajectories_over_deterministic_models,
+                                            mean_rewards_over_deterministic_models):
             if total_reward > gamma_quantile:
                 elite_trajectories.extend(trajectory)
 
         agent.fit(elite_trajectories)
 
-    trajectory = get_trajectory(env, agent, max_iter, visualize=True)
-    print('total reward:', sum(trajectory['rewards']))
-    print('model:\n', agent.model)
+        # policy get metric
+        agent.eval()
+        random_trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
+        random_total_rewards = [np.sum(trajectory["rewards"]) for trajectory in random_trajectories]
+        list_of_total_rewards.append(np.mean(random_total_rewards))
+        print(f"Iter: {n} | Total reward: {np.mean(random_total_rewards)}")
+
+    return list_of_total_rewards
 
 
 if __name__ == "__main__":
@@ -116,21 +136,39 @@ if __name__ == "__main__":
     # 4: pickup passenger
     # 5: drop off passenger
 
-    quantile_param = 0.6
-    max_iter = 1000
-    iterations_N = 10
-    trajectories_K = 100
+    best_quantile_param = 0.7
+    best_iterations_N = 50
+    best_trajectories_K = 5000
+    best_max_iter = 500
     deterministic_model_M = 10
 
-    cross_entropy_agent_model(env=env,
-                              state_n=state_n,
-                              action_n=action_n,
-                              quantile_param=quantile_param,
-                              iterations_N=iterations_N,
-                              trajectories_K=trajectories_K,
-                              deterministic_model_M=deterministic_model_M,
-                              max_iter=max_iter, )
+    fig = plt.figure(figsize=(20, 10))
+    ax = plt.axes()
 
-    # найти хорошее лямбда и сравнить графики с сглаживанием и без (стало лучше или нет)
-    # сглаживание лапласа дало рез-т или нет ?
-    # сглаживание политики дало рез-т или нет ?
+    list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                      state_n=state_n,
+                                                      action_n=action_n,
+                                                      quantile_param=best_quantile_param,
+                                                      iterations_N=best_iterations_N,
+                                                      trajectories_K=best_trajectories_K,
+                                                      deterministic_model_M=10,
+                                                      max_iter=best_max_iter, )
+
+    ax.plot(np.arange(best_iterations_N), list_of_total_rewards, label=f"deterministic_model_M={deterministic_model_M}")
+
+    list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                      state_n=state_n,
+                                                      action_n=action_n,
+                                                      quantile_param=best_quantile_param,
+                                                      iterations_N=best_iterations_N,
+                                                      trajectories_K=best_trajectories_K,
+                                                      deterministic_model_M=30,
+                                                      max_iter=best_max_iter, )
+
+    ax.plot(np.arange(best_iterations_N), list_of_total_rewards, label=f"deterministic_model_M={deterministic_model_M}")
+
+    ax.legend()
+    plt.grid(True)
+    plt.xlabel("epoch")
+    plt.ylabel("mean total reward")
+    fig.savefig("../result_3.png")

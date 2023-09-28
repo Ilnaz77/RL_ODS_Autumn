@@ -13,6 +13,9 @@ jupyter = "^1.0.0"
 wandb = "^0.15.11"
 plotly = "5.17.0"
 pandas = "1.5.1"
+joblib = "^1.3.2"
+tqdm = "^4.66.1"
+matplotlib = "^3.8.0"
 
 
 [build-system]
