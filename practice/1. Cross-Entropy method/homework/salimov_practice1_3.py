@@ -148,11 +148,11 @@ if __name__ == "__main__":
     # 4: pickup passenger
     # 5: drop off passenger
 
-    best_quantile_param = 0.7
+    best_quantile_param = 0.8
     best_iterations_N = 60
-    best_trajectories_K = 500
+    best_trajectories_K = 5000
     best_max_iter = 500
-    deterministic_model_M = 30
+    deterministic_model_M = 50
 
     fig = plt.figure(figsize=(20, 10))
     ax = plt.axes()
