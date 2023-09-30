@@ -58,10 +58,9 @@ class CrossEntropyAgent:
         return None
 
 
-def get_trajectory(agent: CrossEntropyAgent, max_iter: int, visualize: bool = False):
+def get_trajectory(env, agent: CrossEntropyAgent, max_iter: int, visualize: bool = False):
     trajectory = {"states": [], "actions": [], "rewards": []}
-    env = gym.make("Taxi-v3")
-    state = env.reset(seed=np.random.randint(1, 1000000))
+    state = env.reset()
     # print(state)
     for _ in range(max_iter):
         trajectory["states"].append(state)
@@ -87,6 +86,7 @@ def cross_entropy_agent_model(
         max_iter: int = 200):
     agent = CrossEntropyAgent(action_n=action_n, state_n=state_n)
     list_of_total_rewards = []
+    env = gym.make("Taxi-v3")
 
     for n in range(iterations_N):
         mean_rewards_over_deterministic_models = []
@@ -96,10 +96,10 @@ def cross_entropy_agent_model(
         for m in range(deterministic_model_M):
             agent.sample_deterministic_model()
             # start = time.time()
-            # trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
-            with parallel_config(n_jobs=10):
-                trajectories = joblib.Parallel()(delayed(get_trajectory)(agent, max_iter) for _ in range(trajectories_K))
-
+            trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
+            # with parallel_config(n_jobs=10):
+            #    trajectories = joblib.Parallel()(delayed(get_trajectory)(agent, max_iter)
+            #                                                                   for _ in range(trajectories_K))
             # end = time.time()
             # print(end - start)
             mean_reward_over_deterministic_model = np.mean(
@@ -150,9 +150,9 @@ if __name__ == "__main__":
 
     best_quantile_param = 0.8
     best_iterations_N = 60
-    best_trajectories_K = 5000
-    best_max_iter = 500
-    deterministic_model_M = 50
+    best_trajectories_K = 10000
+    best_max_iter = 200
+    deterministic_model_M = 10
 
     fig = plt.figure(figsize=(20, 10))
     ax = plt.axes()
@@ -172,3 +172,10 @@ if __name__ == "__main__":
     plt.xlabel("epoch")
     plt.ylabel("mean total reward")
     fig.savefig("../result_3.png")
+
+    # Плохо - не сошлось стояло на одном месте (параллелил) Iter: 54 | Total reward: -1351.082
+    # best_quantile_param = 0.8
+    # best_iterations_N = 60
+    # best_trajectories_K = 5000
+    # best_max_iter = 500
+    # deterministic_model_M = 50
