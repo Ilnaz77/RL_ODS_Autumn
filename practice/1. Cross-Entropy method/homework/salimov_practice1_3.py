@@ -16,7 +16,6 @@ class CrossEntropyAgent:
         self.deterministic_model = np.zeros_like(self.model)
 
         self.is_train = True
-        self.seed = 0
 
     def train(self):
         self.is_train = True
@@ -25,7 +24,7 @@ class CrossEntropyAgent:
         self.is_train = False
 
     def sample_deterministic_model(self):
-        np.random.seed(self.seed)
+        # np.random.seed(np.random.randint(0, 1e6))
         self.deterministic_model = np.zeros_like(self.model)
         for state in range(state_n):
             action = int(np.random.choice(np.arange(self.action_n), p=self.model[state]))
@@ -36,10 +35,12 @@ class CrossEntropyAgent:
         assert max(self.deterministic_model[state]) == 1
         assert int(np.random.choice(np.arange(self.action_n), p=self.deterministic_model[state])) == int(
             np.argmax(self.deterministic_model[state]))
+
         if self.is_train:
             action = int(np.argmax(self.deterministic_model[state]))
         else:
             action = int(np.random.choice(np.arange(self.action_n), p=self.model[state]))
+
         return action
 
     def fit(self, elite_trajectories: List[dict]) -> None:
@@ -77,16 +78,16 @@ def get_trajectory(env, agent: CrossEntropyAgent, max_iter: int, visualize: bool
 
 
 def cross_entropy_agent_model(
+        env,
         state_n: int,
         action_n: int,
-        quantile_param: float = 0.9,
-        iterations_N: int = 20,
-        trajectories_K: int = 50,
-        deterministic_model_M: int = 10,
-        max_iter: int = 200):
+        quantile_param: float,
+        iterations_N: int,
+        trajectories_K: int,
+        deterministic_model_M: int,
+        max_iter: int,):
     agent = CrossEntropyAgent(action_n=action_n, state_n=state_n)
     list_of_total_rewards = []
-    env = gym.make("Taxi-v3")
 
     for n in range(iterations_N):
         mean_rewards_over_deterministic_models = []
@@ -95,15 +96,8 @@ def cross_entropy_agent_model(
         agent.train()
         for m in range(deterministic_model_M):
             agent.sample_deterministic_model()
-            # start = time.time()
-            trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
-            # with parallel_config(n_jobs=10):
-            #    trajectories = joblib.Parallel()(delayed(get_trajectory)(agent, max_iter)
-            #                                                                   for _ in range(trajectories_K))
-            # end = time.time()
-            # print(end - start)
-            mean_reward_over_deterministic_model = np.mean(
-                [np.sum(trajectory["rewards"]) for trajectory in trajectories])
+            trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for k in range(trajectories_K)]
+            mean_reward_over_deterministic_model = np.mean([np.sum(trajectory["rewards"]) for trajectory in trajectories])
             pool_of_trajectories_over_deterministic_models.append(trajectories)
             mean_rewards_over_deterministic_models.append(mean_reward_over_deterministic_model)
 
@@ -122,9 +116,7 @@ def cross_entropy_agent_model(
         random_trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
         random_total_rewards = [np.sum(trajectory["rewards"]) for trajectory in random_trajectories]
         list_of_total_rewards.append(np.mean(random_total_rewards))
-        print(f"Iter: {n} | Total reward: {np.mean(random_total_rewards)}")
-
-        agent.seed += 1
+        print(f"Iter: {n} | Total reward: {np.mean(random_total_rewards)} | Best Mean over model: {max(mean_rewards_over_deterministic_models)}")
 
     return list_of_total_rewards
 
@@ -148,16 +140,19 @@ if __name__ == "__main__":
     # 4: pickup passenger
     # 5: drop off passenger
 
-    best_quantile_param = 0.8
-    best_iterations_N = 60
-    best_trajectories_K = 10000
+    env = gym.make("Taxi-v3")
+
+    best_quantile_param = 0.6
+    best_iterations_N = 80
+    best_trajectories_K = 40
     best_max_iter = 200
-    deterministic_model_M = 10
+    deterministic_model_M = 70
 
     fig = plt.figure(figsize=(20, 10))
     ax = plt.axes()
 
-    list_of_total_rewards = cross_entropy_agent_model(state_n=state_n,
+    list_of_total_rewards = cross_entropy_agent_model(env=env,
+                                                      state_n=state_n,
                                                       action_n=action_n,
                                                       quantile_param=best_quantile_param,
                                                       iterations_N=best_iterations_N,
