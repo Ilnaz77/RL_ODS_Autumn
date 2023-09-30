@@ -119,7 +119,7 @@ def cross_entropy_agent_model(
 
         # policy get metric
         agent.eval()
-        random_trajectories = [get_trajectory(agent, max_iter, visualize=False) for _ in range(trajectories_K)]
+        random_trajectories = [get_trajectory(env, agent, max_iter, visualize=False) for _ in range(trajectories_K)]
         random_total_rewards = [np.sum(trajectory["rewards"]) for trajectory in random_trajectories]
         list_of_total_rewards.append(np.mean(random_total_rewards))
         print(f"Iter: {n} | Total reward: {np.mean(random_total_rewards)}")
